@@ -155,12 +155,19 @@ func (p *AzureProvider) Redeem(ctx context.Context, redirectURL, code string) (*
 
 	// the presence of id_token depends on the configuration and
 	// verification of id_token requires oidc configuration
-	if session.IDToken != "" && p.Verifier != nil {
-		email, err := p.verifyIDTokenAndExtractEmail(ctx, session.IDToken)
-		if err != nil {
-			return nil, err
+	if p.Verifier != nil {
+		if session.IDToken != "" {
+			email, err := p.verifyTokenAndExtractEmail(ctx, session.IDToken)
+			if err == nil {
+				session.Email = email
+			}
 		}
-		session.Email = email
+		if session.Email == "" && session.AccessToken != "" {
+			email, err := p.verifyTokenAndExtractEmail(ctx, session.AccessToken)
+			if err == nil {
+				session.Email = email
+			}
+		}
 	}
 
 	return session, nil
@@ -204,8 +211,8 @@ func (p *AzureProvider) prepareRedeem(redirectURL, code string) (url.Values, err
 	return params, nil
 }
 
-func (p *AzureProvider) verifyIDTokenAndExtractEmail(ctx context.Context, rawIDToken string) (string, error) {
-	idToken, err := p.Verifier.Verify(ctx, rawIDToken)
+func (p *AzureProvider) verifyTokenAndExtractEmail(ctx context.Context, rawToken string) (string, error) {
+	idToken, err := p.Verifier.Verify(ctx, rawToken)
 	if err != nil {
 		return "", err
 	}
@@ -272,11 +279,14 @@ func (p *AzureProvider) redeemRefreshToken(ctx context.Context, s *sessions.Sess
 	// the presence of id_token depends on the configuration and
 	// verification of id_token requires oidc configuration
 	if s.IDToken != "" && p.Verifier != nil {
-		email, err := p.verifyIDTokenAndExtractEmail(ctx, s.IDToken)
+		email, err := p.verifyTokenAndExtractEmail(ctx, s.IDToken)
 		if err != nil {
-			return err
+			if s.Email == "" {
+				return err
+			}
+		} else {
+			s.Email = email
 		}
-		s.Email = email
 	}
 
 	return
